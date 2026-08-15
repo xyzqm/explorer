@@ -99,11 +99,27 @@ const defaultSortFn = (a, b) => {
 
 const defaultFilterFn = (node) => node.slugSegment !== "tags";
 
-function processTrie(trie, sortFn, filterFn, mapFn) {
+// Finds the node at the given slash-joined folder path and returns a
+// trie-shaped stand-in exposing that folder's children as the top level, so
+// renderTree draws them directly with no wrapping folder/collapse UI.
+function rootAtFolder(trie, folderPath) {
+  const segments = folderPath.split("/").filter(Boolean);
+  let node = trie;
+  for (const segment of segments) {
+    node = node.children.find((c) => c.isFolder && c.slugSegment === segment);
+    if (!node) {
+      console.warn("[Explorer] rootFolder not found:", folderPath);
+      return { children: [] };
+    }
+  }
+  return { children: node.children };
+}
+
+function processTrie(trie, sortFn, filterFn, mapFn, rootFolder) {
   if (filterFn) trie.filter(filterFn);
   if (mapFn) trie.map(mapFn);
   if (sortFn) trie.sort(sortFn);
-  return trie;
+  return rootFolder ? rootAtFolder(trie, rootFolder) : trie;
 }
 
 // Build trie from content index data
@@ -136,6 +152,7 @@ async function buildFileTrie(dataFns) {
     let sortFn = defaultSortFn;
     let filterFn = defaultFilterFn;
     let mapFn = null;
+    let rootFolder = null;
 
     if (dataFns) {
       try {
@@ -149,12 +166,15 @@ async function buildFileTrie(dataFns) {
         if (parsed.mapFn) {
           mapFn = new Function("node", "(" + parsed.mapFn + ")(node)");
         }
+        if (parsed.rootFolder) {
+          rootFolder = parsed.rootFolder;
+        }
       } catch (e) {
         console.error("Error parsing data functions:", e);
       }
     }
 
-    return processTrie(trie, sortFn, filterFn, mapFn);
+    return processTrie(trie, sortFn, filterFn, mapFn, rootFolder);
   } catch (e) {
     console.error("Error building file trie:", e);
     return null;
